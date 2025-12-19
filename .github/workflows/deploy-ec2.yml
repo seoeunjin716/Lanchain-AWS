@@ -62,6 +62,14 @@ jobs:
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           EOF
 
+          # Python 가상환경 패키지 설치 (필요한 경우)
+          echo "📦 Checking Python venv package..."
+          if ! python3 -m venv --help > /dev/null 2>&1; then
+            echo "📦 Installing python3-venv package..."
+            sudo apt update
+            sudo apt install -y python3-venv python3-pip
+          fi
+
           # Python 가상환경 확인 및 생성
           if [ ! -d venv ]; then
             echo "📦 Creating Python virtual environment..."
