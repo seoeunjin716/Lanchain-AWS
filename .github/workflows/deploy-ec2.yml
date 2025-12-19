@@ -157,7 +157,8 @@ jobs:
 
           # backend/app 폴더만 동기화 (현재 작업 디렉토리가 backend/app이므로 . 사용)
           # 모델 파일 제외 (용량이 크므로)
-          rsync -avz --delete $SSH_OPTS \
+          # rsync는 -e 옵션으로 SSH 옵션을 전달해야 함
+          rsync -avz --delete -e "ssh $SSH_OPTS" \
             --exclude 'models/midm/' \
             --exclude '__pycache__/' \
             --exclude '*.pyc' \
