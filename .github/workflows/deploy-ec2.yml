@@ -47,7 +47,8 @@ jobs:
 
           echo "🚀 Starting FastAPI deployment..."
 
-          PROJECT_DIR=/home/ubuntu/rag-app/backend/app
+          PROJECT_ROOT_DIR=/home/ubuntu/rag-app
+          PROJECT_DIR=$PROJECT_ROOT_DIR/backend/app
           SERVICE_NAME=rag-fastapi
 
           # 디렉토리 생성 (홈 디렉토리이므로 sudo 불필요)
@@ -55,7 +56,7 @@ jobs:
           mkdir -p $PROJECT_DIR/models/midm
 
           # backend 디렉토리 구조 생성 (import 경로를 위해)
-          mkdir -p /home/ubuntu/rag-app/backend
+          mkdir -p $PROJECT_ROOT_DIR/backend
 
           cd $PROJECT_DIR
 
@@ -181,10 +182,10 @@ jobs:
           [Service]
           Type=simple
           User=$USER
-          WorkingDirectory=/home/ubuntu/rag-app
+          WorkingDirectory=$PROJECT_ROOT_DIR
           Environment="PATH=$PROJECT_DIR/venv/bin"
-          Environment="PYTHONPATH=/home/ubuntu/rag-app"
-          EnvironmentFile=$PROJECT_DIR/.env
+          Environment="PYTHONPATH=$PROJECT_ROOT_DIR"
+          EnvironmentFile=$PROJECT_ROOT_DIR/.env
           ExecStart=$PROJECT_DIR/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2
           Restart=always
           RestartSec=10
