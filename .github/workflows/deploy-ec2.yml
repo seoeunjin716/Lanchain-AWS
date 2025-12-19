@@ -11,7 +11,7 @@ on:
 env:
   EC2_HOST: ${{ secrets.EC2_HOST }}
   EC2_USER: ${{ secrets.EC2_USER }}
-  PROJECT_DIR: /home/ubuntu/rag-app # 홈 디렉토리에 배포
+  PROJECT_DIR: /home/ubuntu/rag-app/backend/app # backend/app 구조 유지
 
 jobs:
   deploy:
@@ -47,12 +47,15 @@ jobs:
 
           echo "🚀 Starting FastAPI deployment..."
 
-          PROJECT_DIR=/home/ubuntu/rag-app
+          PROJECT_DIR=/home/ubuntu/rag-app/backend/app
           SERVICE_NAME=rag-fastapi
 
           # 디렉토리 생성 (홈 디렉토리이므로 sudo 불필요)
           mkdir -p $PROJECT_DIR
           mkdir -p $PROJECT_DIR/models/midm
+
+          # backend 디렉토리 구조 생성 (import 경로를 위해)
+          mkdir -p /home/ubuntu/rag-app/backend
 
           cd $PROJECT_DIR
 
@@ -103,10 +106,11 @@ jobs:
           [Service]
           Type=simple
           User=$USER
-          WorkingDirectory=$PROJECT_DIR
+          WorkingDirectory=/home/ubuntu/rag-app
           Environment="PATH=$PROJECT_DIR/venv/bin"
+          Environment="PYTHONPATH=/home/ubuntu/rag-app"
           EnvironmentFile=$PROJECT_DIR/.env
-          ExecStart=$PROJECT_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
+          ExecStart=$PROJECT_DIR/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2
           Restart=always
           RestartSec=10
 
@@ -189,6 +193,8 @@ jobs:
           # requirements.txt도 함께 전송 (backend/requirements.txt)
           echo "📤 Uploading requirements.txt..."
           scp $SSH_OPTS ../requirements.txt ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/requirements.txt
+
+          # .env 파일도 PROJECT_DIR에 생성되도록 확인
 
           echo "📤 Uploading deployment script..."
           # 배포 스크립트 전송 및 실행 (루트에서 생성된 deploy.sh)
