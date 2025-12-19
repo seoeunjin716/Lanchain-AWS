@@ -8,13 +8,24 @@ from typing import Optional
 try:
     from dotenv import load_dotenv
 
-    # 프로젝트 루트에서 .env 파일 찾기
-    env_path = Path(__file__).parent.parent.parent.parent / ".env"
-    if not env_path.exists():
-        # backend 디렉토리의 .env 파일 확인
-        env_path = Path(__file__).parent.parent.parent / ".env"
-    if env_path.exists():
-        load_dotenv(env_path)
+    # .env 파일 찾기 (여러 경로 확인)
+    possible_paths = [
+        Path(__file__).parent.parent.parent.parent / ".env",  # 프로젝트 루트
+        Path(__file__).parent.parent.parent / ".env",  # backend 디렉토리
+        Path("/home/ubuntu/rag-app/.env"),  # EC2 배포 경로
+        Path("/opt/rag-app/.env"),  # 대체 배포 경로
+    ]
+
+    env_loaded = False
+    for env_path in possible_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            print(f"✅ .env 파일 로드됨: {env_path}")
+            env_loaded = True
+            break
+
+    if not env_loaded:
+        print("⚠️  .env 파일을 찾을 수 없습니다. 환경 변수를 직접 사용합니다.")
 except ImportError:
     # python-dotenv가 없는 경우 무시 (환경 변수 직접 사용)
     pass

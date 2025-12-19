@@ -17,13 +17,14 @@ router = APIRouter()
 
 
 @router.get("/health")
-async def health_check(
-    service: VectorStoreService = Depends(get_vector_store_service),
-):
+async def health_check():
     """헬스 체크 엔드포인트."""
+    from backend.app.main import vector_store_service
+
     return {
         "status": "healthy",
-        "vector_store_initialized": service.vector_store is not None,
+        "vector_store_initialized": vector_store_service is not None
+        and vector_store_service.vector_store is not None,
     }
 
 

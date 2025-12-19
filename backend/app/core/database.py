@@ -52,6 +52,19 @@ def initialize_vector_store() -> Optional[PGVector]:
         # Vector store 연결
         print("📦 PostgreSQL 연결 문자열 확인 중...")
         conn_str = settings.connection_string
+
+        # 연결 문자열이 비어있거나 기본값인지 확인
+        if not conn_str or conn_str.strip() == "":
+            raise ValueError(
+                "PostgreSQL 연결 문자열이 설정되지 않았습니다. POSTGRES_CONNECTION_STRING 환경 변수를 확인하세요."
+            )
+
+        # 기본 localhost 연결 문자열인지 확인
+        if "localhost" in conn_str or "127.0.0.1" in conn_str:
+            print("⚠️  경고: localhost 연결 문자열이 감지되었습니다.")
+            print("   POSTGRES_CONNECTION_STRING이 설정되지 않았을 수 있습니다.")
+            print("   GitHub Secrets에서 POSTGRES_CONNECTION_STRING을 확인하세요.")
+
         # 연결 문자열에서 비밀번호 부분을 마스킹하여 로그 출력
         masked_conn_str = conn_str
         if "@" in conn_str and ":" in conn_str:
