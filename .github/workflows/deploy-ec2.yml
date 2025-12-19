@@ -3,17 +3,24 @@ name: Deploy to EC2
 on:
   push:
     branches: [main]
+    paths:
+      - "backend/app/**" # backend/app 폴더 변경 시에만 실행
+      - "backend/requirements.txt" # requirements.txt 변경 시에도 실행
   workflow_dispatch:
 
 env:
   EC2_HOST: ${{ secrets.EC2_HOST }}
   EC2_USER: ${{ secrets.EC2_USER }}
-  PROJECT_DIR: /opt/rag-app # 프로덕션 표준 위치 (FHS 준수)
+  PROJECT_DIR: /home/ubuntu/rag-app # 홈 디렉토리에 배포
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    defaults:
+      run:
+        working-directory: backend/app # 모든 run 명령은 backend/app 기준으로 실행
 
     steps:
       - name: Checkout code
@@ -32,6 +39,7 @@ jobs:
           chmod 600 ~/.ssh/known_hosts
 
       - name: Create deployment script
+        working-directory: ${{ github.workspace }} # 루트에서 실행 (배포 스크립트 생성용)
         run: |
           cat > deploy.sh << 'DEPLOYSCRIPT'
           #!/bin/bash
@@ -39,13 +47,12 @@ jobs:
 
           echo "🚀 Starting FastAPI deployment..."
 
-          PROJECT_DIR=/opt/rag-app
+          PROJECT_DIR=/home/ubuntu/rag-app
           SERVICE_NAME=rag-fastapi
 
-          # 디렉토리 생성 및 권한 설정
-          sudo mkdir -p $PROJECT_DIR
-          sudo mkdir -p $PROJECT_DIR/backend/app/models/midm
-          sudo chown -R $USER:$USER $PROJECT_DIR
+          # 디렉토리 생성 (홈 디렉토리이므로 sudo 불필요)
+          mkdir -p $PROJECT_DIR
+          mkdir -p $PROJECT_DIR/models/midm
 
           cd $PROJECT_DIR
 
@@ -65,7 +72,7 @@ jobs:
           echo "📦 Installing dependencies..."
           source venv/bin/activate
           pip install --upgrade pip
-          pip install -r backend/requirements.txt
+          pip install -r requirements.txt
 
           # systemd 서비스 파일 생성/업데이트
           echo "📝 Creating systemd service..."
@@ -80,7 +87,7 @@ jobs:
           WorkingDirectory=$PROJECT_DIR
           Environment="PATH=$PROJECT_DIR/venv/bin"
           EnvironmentFile=$PROJECT_DIR/.env
-          ExecStart=$PROJECT_DIR/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2
+          ExecStart=$PROJECT_DIR/venv/bin/uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2
           Restart=always
           RestartSec=10
 
@@ -114,6 +121,7 @@ jobs:
           DEPLOYSCRIPT
 
       - name: Test EC2 Connection
+        working-directory: . # 루트에서 실행
         run: |
           echo "🔍 Testing EC2 connection..."
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10"
@@ -144,23 +152,28 @@ jobs:
           SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
 
           echo "📦 Starting code synchronization..."
-          # 코드 동기화 (모델 파일 및 불필요한 파일 제외)
+          echo "Current directory: $(pwd)"
+          echo "Syncing backend/app to EC2..."
+
+          # backend/app 폴더만 동기화 (현재 작업 디렉토리가 backend/app이므로 . 사용)
+          # 모델 파일 제외 (용량이 크므로)
           rsync -avz --delete $SSH_OPTS \
-            --exclude 'backend/app/models/midm/' \
-            --exclude 'node_modules/' \
-            --exclude '.git/' \
+            --exclude 'models/midm/' \
             --exclude '__pycache__/' \
             --exclude '*.pyc' \
-            --exclude '.venv/' \
-            --exclude 'venv/' \
-            --exclude '.env' \
             --exclude '*.log' \
             --exclude '.pytest_cache/' \
             --exclude '.mypy_cache/' \
-            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/
+            . ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/
+
+          # requirements.txt도 함께 전송 (backend/requirements.txt)
+          echo "📤 Uploading requirements.txt..."
+          scp $SSH_OPTS ../requirements.txt ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/requirements.txt
 
           echo "📤 Uploading deployment script..."
-          # 배포 스크립트 전송 및 실행
+          # 배포 스크립트 전송 및 실행 (루트에서 생성된 deploy.sh)
+          # working-directory가 backend/app이므로 루트로 이동하여 전송
+          cd ${{ github.workspace }}
           scp $SSH_OPTS deploy.sh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/
 
           echo "🚀 Executing deployment script..."
@@ -168,7 +181,9 @@ jobs:
 
       - name: Deployment Summary
         if: success()
+        working-directory: . # 루트에서 실행
         run: |
           echo "✅ Deployment completed successfully!"
           echo "🌐 Backend API: http://${{ secrets.EC2_HOST }}:8000"
           echo "📚 API Docs: http://${{ secrets.EC2_HOST }}:8000/docs"
+          echo "📁 Deployed directory: backend/app → /home/ubuntu/rag-app"
