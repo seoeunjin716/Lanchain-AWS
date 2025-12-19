@@ -113,11 +113,37 @@ jobs:
           exit 1
           DEPLOYSCRIPT
 
+      - name: Test EC2 Connection
+        run: |
+          echo "🔍 Testing EC2 connection..."
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=10"
+
+          # 연결 테스트 (최대 3번 재시도)
+          for i in {1..3}; do
+            echo "Attempt $i/3: Testing SSH connection..."
+            if ssh $SSH_OPTS ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'echo "Connection successful"'; then
+              echo "✅ Connection successful!"
+              exit 0
+            fi
+            if [ $i -lt 3 ]; then
+              echo "⏳ Waiting 5 seconds before retry..."
+              sleep 5
+            fi
+          done
+
+          echo "❌ Failed to connect to EC2 after 3 attempts"
+          echo "Please check:"
+          echo "1. EC2 instance is running"
+          echo "2. Security Group allows SSH (port 22) from GitHub Actions IPs"
+          echo "3. EC2_HOST secret is correct: ${{ secrets.EC2_HOST }}"
+          exit 1
+
       - name: Deploy to EC2
         run: |
-          # SSH 옵션 설정 (StrictHostKeyChecking 비활성화)
-          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts"
+          # SSH 옵션 설정 (타임아웃 및 재시도 설정)
+          SSH_OPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=~/.ssh/known_hosts -o ConnectTimeout=30 -o ServerAliveInterval=60 -o ServerAliveCountMax=3"
 
+          echo "📦 Starting code synchronization..."
           # 코드 동기화 (모델 파일 및 불필요한 파일 제외)
           rsync -avz --delete $SSH_OPTS \
             --exclude 'backend/app/models/midm/' \
@@ -133,8 +159,11 @@ jobs:
             --exclude '.mypy_cache/' \
             ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/
 
+          echo "📤 Uploading deployment script..."
           # 배포 스크립트 전송 및 실행
           scp $SSH_OPTS deploy.sh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/
+
+          echo "🚀 Executing deployment script..."
           ssh $SSH_OPTS ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash ~/deploy.sh'
 
       - name: Deployment Summary
