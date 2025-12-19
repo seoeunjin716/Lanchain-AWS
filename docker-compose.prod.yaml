@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.prod
+    container_name: rag-backend-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_CONNECTION_STRING: ${POSTGRES_CONNECTION_STRING}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    volumes:
+      # 모델 파일을 볼륨으로 마운트 (EC2에 이미 존재해야 함)
+      - ./backend/app/models/midm:/app/backend/app/models/midm:ro
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+

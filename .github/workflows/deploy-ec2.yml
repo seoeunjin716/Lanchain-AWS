@@ -1,0 +1,140 @@
+name: Deploy to EC2
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  EC2_USER: ${{ secrets.EC2_USER }}
+  PROJECT_DIR: /opt/rag-app # 프로덕션 표준 위치 (FHS 준수)
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.EC2_SSH_KEY }}
+
+      - name: Add EC2 to known hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.EC2_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Create deployment script
+        run: |
+          cat > deploy.sh << 'DEPLOYSCRIPT'
+          #!/bin/bash
+          set -e
+
+          echo "🚀 Starting FastAPI deployment..."
+
+          PROJECT_DIR=/opt/rag-app
+          SERVICE_NAME=rag-fastapi
+
+          # 디렉토리 생성 및 권한 설정
+          sudo mkdir -p $PROJECT_DIR
+          sudo mkdir -p $PROJECT_DIR/backend/app/models/midm
+          sudo chown -R $USER:$USER $PROJECT_DIR
+
+          cd $PROJECT_DIR
+
+          # 환경 변수 파일 생성
+          cat > .env << EOF
+          POSTGRES_CONNECTION_STRING=${{ secrets.POSTGRES_CONNECTION_STRING }}
+          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
+          EOF
+
+          # Python 가상환경 확인 및 생성
+          if [ ! -d venv ]; then
+            echo "📦 Creating Python virtual environment..."
+            python3 -m venv venv
+          fi
+
+          # 가상환경 활성화 및 의존성 설치
+          echo "📦 Installing dependencies..."
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+
+          # systemd 서비스 파일 생성/업데이트
+          echo "📝 Creating systemd service..."
+          sudo tee /etc/systemd/system/${SERVICE_NAME}.service > /dev/null <<EOFSERVICE
+          [Unit]
+          Description=RAG FastAPI Application
+          After=network.target
+
+          [Service]
+          Type=simple
+          User=$USER
+          WorkingDirectory=$PROJECT_DIR
+          Environment="PATH=$PROJECT_DIR/venv/bin"
+          EnvironmentFile=$PROJECT_DIR/.env
+          ExecStart=$PROJECT_DIR/venv/bin/uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --workers 2
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+          EOFSERVICE
+
+          # systemd 재로드 및 서비스 재시작
+          echo "🔄 Reloading systemd and restarting service..."
+          sudo systemctl daemon-reload
+          sudo systemctl enable ${SERVICE_NAME}
+          sudo systemctl restart ${SERVICE_NAME}
+
+          # 헬스 체크
+          echo "🏥 Waiting for service to be ready..."
+          sleep 10
+
+          for i in {1..30}; do
+            if curl -f http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+              echo "✅ Health check passed!"
+              exit 0
+            fi
+            echo "Attempt $i/30: Service not ready yet, waiting..."
+            sleep 2
+          done
+
+          echo "❌ Health check failed!"
+          echo "📋 Service logs:"
+          sudo journalctl -u ${SERVICE_NAME} -n 50 --no-pager
+          exit 1
+          DEPLOYSCRIPT
+
+      - name: Deploy to EC2
+        run: |
+          # 코드 동기화 (모델 파일 및 불필요한 파일 제외)
+          rsync -avz --delete \
+            --exclude 'backend/app/models/midm/' \
+            --exclude 'node_modules/' \
+            --exclude '.git/' \
+            --exclude '__pycache__/' \
+            --exclude '*.pyc' \
+            --exclude '.venv/' \
+            --exclude 'venv/' \
+            --exclude '.env' \
+            --exclude '*.log' \
+            --exclude '.pytest_cache/' \
+            --exclude '.mypy_cache/' \
+            ./ ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:${{ env.PROJECT_DIR }}/
+
+          # 배포 스크립트 전송 및 실행
+          scp deploy.sh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:~/
+          ssh ${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }} 'bash ~/deploy.sh'
+
+      - name: Deployment Summary
+        if: success()
+        run: |
+          echo "✅ Deployment completed successfully!"
+          echo "🌐 Backend API: http://${{ secrets.EC2_HOST }}:8000"
+          echo "📚 API Docs: http://${{ secrets.EC2_HOST }}:8000/docs"

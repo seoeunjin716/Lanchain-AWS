@@ -1,0 +1,28 @@
+services:
+  langchain-app:
+    build: .
+    container_name: langchain-app
+    environment:
+      # Neon PostgreSQL 연결 정보
+      POSTGRES_CONNECTION_STRING: ${POSTGRES_CONNECTION_STRING:-postgresql://neondb_owner:npg_l7ivQxhmjJA3@ep-rough-moon-a1hk3p1c-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require}
+    volumes:
+      - .:/app
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: langchain-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+    depends_on:
+      - langchain-app
+    restart: unless-stopped
+
+
