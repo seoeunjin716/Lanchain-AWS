@@ -59,6 +59,12 @@ jobs:
 
           cd $PROJECT_DIR
 
+          # 디스크 공간 확인
+          echo "💾 Checking disk space..."
+          df -h / | tail -1
+          echo "📦 Available space:"
+          df -h $PROJECT_DIR | tail -1
+
           # 환경 변수 파일 생성
           cat > .env << EOF
           POSTGRES_CONNECTION_STRING=${{ secrets.POSTGRES_CONNECTION_STRING }}
@@ -131,7 +137,22 @@ jobs:
           echo "📦 Installing dependencies..."
           source venv/bin/activate
           pip install --upgrade pip
-          pip install -r requirements.txt
+
+          # 디스크 공간 확인
+          echo "💾 Disk space before installation:"
+          df -h $PROJECT_DIR | tail -1
+
+          # CPU 전용 PyTorch 먼저 설치 (GPU 버전보다 훨씬 작음, 약 200MB vs 900MB)
+          echo "📦 Installing CPU-only PyTorch..."
+          pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+          # 나머지 의존성 설치
+          echo "📦 Installing other dependencies..."
+          pip install --no-cache-dir -r requirements.txt
+
+          # 디스크 공간 확인
+          echo "💾 Disk space after installation:"
+          df -h $PROJECT_DIR | tail -1
 
           # systemd 서비스 파일 생성/업데이트
           echo "📝 Creating systemd service..."
