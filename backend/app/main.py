@@ -29,7 +29,11 @@ async def lifespan(app: FastAPI):
 
     # Vector Store 초기화
     vector_store = initialize_vector_store()
-    vector_store_service = VectorStoreService(vector_store)
+    if vector_store is None:
+        print("⚠️  Vector Store 초기화 실패 - Vector Store 기능은 사용할 수 없습니다.")
+        vector_store_service = None
+    else:
+        vector_store_service = VectorStoreService(vector_store)
 
     # LLM 모델 초기화 - Midm 모델 사용
     try:

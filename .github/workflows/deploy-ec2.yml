@@ -65,11 +65,28 @@ jobs:
           echo "📦 Available space:"
           df -h $PROJECT_DIR | tail -1
 
-          # 환경 변수 파일 생성
-          cat > .env << EOF
+          # 환경 변수 파일 생성 (프로젝트 루트에 생성)
+          echo "📝 Creating .env file..."
+          cat > $PROJECT_ROOT_DIR/.env << EOF
           POSTGRES_CONNECTION_STRING=${{ secrets.POSTGRES_CONNECTION_STRING }}
           OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           EOF
+
+          # .env 파일 확인 (비밀번호는 마스킹)
+          echo "📝 Verifying .env file..."
+          if [ -f $PROJECT_ROOT_DIR/.env ]; then
+            echo "✅ .env file created successfully"
+            # POSTGRES_CONNECTION_STRING이 설정되어 있는지 확인 (비밀번호 마스킹)
+            if grep -q "POSTGRES_CONNECTION_STRING" $PROJECT_ROOT_DIR/.env; then
+              echo "✅ POSTGRES_CONNECTION_STRING is set"
+              # 연결 문자열에서 비밀번호 부분 마스킹하여 출력
+              grep "POSTGRES_CONNECTION_STRING" $PROJECT_ROOT_DIR/.env | sed 's/:[^@]*@/:***@/g'
+            else
+              echo "⚠️  POSTGRES_CONNECTION_STRING is not set"
+            fi
+          else
+            echo "❌ .env file creation failed"
+          fi
 
           # Python 버전 확인
           PYTHON_VERSION=$(python3 --version | cut -d' ' -f2 | cut -d'.' -f1,2)
