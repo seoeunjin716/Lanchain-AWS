@@ -73,7 +73,7 @@ jobs:
 
           # Python 가상환경 패키지 설치
           echo "📦 Installing python3-venv package..."
-          sudo apt update
+          sudo apt update -qq
 
           # Python 버전에 맞는 venv 패키지 설치 시도
           if apt-cache show python${PYTHON_MAJOR_MINOR}-venv > /dev/null 2>&1; then
@@ -87,8 +87,37 @@ jobs:
           # Python 가상환경 확인 및 생성
           if [ ! -d venv ]; then
             echo "📦 Creating Python virtual environment..."
-            python3 -m venv venv
+            if python3 -m venv venv 2>&1; then
+              echo "✅ Virtual environment created successfully"
+            else
+              echo "❌ venv creation failed, trying alternative method..."
+              # 대체 방법: virtualenv 사용
+              if ! command -v virtualenv &> /dev/null; then
+                sudo apt install -y python3-virtualenv
+              fi
+              if virtualenv venv 2>&1; then
+                echo "✅ Virtual environment created with virtualenv"
+              else
+                echo "❌ Both venv methods failed!"
+                echo "📋 Python info:"
+                python3 --version
+                which python3
+                exit 1
+              fi
+            fi
+          else
+            echo "✅ Virtual environment already exists"
           fi
+
+          # 가상환경 생성 확인
+          if [ ! -f venv/bin/activate ]; then
+            echo "❌ Virtual environment activation script not found!"
+            echo "📋 Checking venv directory..."
+            ls -la venv/ || echo "venv directory does not exist"
+            echo "📋 Current directory: $(pwd)"
+            exit 1
+          fi
+          echo "✅ Virtual environment is ready"
 
           # 가상환경 활성화 및 의존성 설치
           echo "📦 Installing dependencies..."
