@@ -2,7 +2,10 @@
 
 import os
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import TYPE_CHECKING, Optional, Tuple
+
+if TYPE_CHECKING:
+    from transformers import AutoModelForCausalLM, AutoTokenizer
 
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
@@ -10,6 +13,9 @@ try:
     TRANSFORMERS_AVAILABLE = True
 except ImportError:
     TRANSFORMERS_AVAILABLE = False
+    # 타입 힌트를 위한 더미 타입
+    AutoModelForCausalLM = None  # type: ignore
+    AutoTokenizer = None  # type: ignore
 
 # device_map 사용 시 accelerate 필요
 try:
@@ -25,7 +31,7 @@ def load_midm_model(
     torch_dtype: Optional[str] = None,
     device_map: str = "auto",
     trust_remote_code: bool = True,
-) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
+) -> Tuple["AutoModelForCausalLM", "AutoTokenizer"]:
     """Midm 모델을 로컬 경로에서 로드.
 
     Args:
